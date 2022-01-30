@@ -1,25 +1,30 @@
-from typing import List, Dict, Optional
+from typing import List, Mapping
 
 import logging
-import cachetools  # type: ignore
 import random
 
 from query import Query, QueryStateDict
-from queries import query_json_api
-from tree import Result
+from tree import Node, ParamList, Result
 
-from . import AnswerTuple, LatLonTuple
+# TODO: Add topic lemmas
+# TODO: "Ýttu (y sinnum) á x takkann (y sinnum)"
+# TODO: Implement rewind/forward by X seconds (Need backend support)
+# TODO: Spólaðu áfram/afturábak um mínútu (left/right keys) also "á tvöföldum hraða"
 
-_SIMINN_QTYPE = "Remote"
+
+_TV_REMOTE_QTYPE = "TV-Remote"
 
 TOPIC_LEMMAS = [
-    "hækka",
-    "lækka",
-    "þögn",
-    "þagna",
-    "hljóð",
-    "hljóðstyrkur",
+    "rás",
+    "sjónvarp",
+    "valmynd",
+    "upp",
+    "niður",
+    "hægri",
+    "vinstri",
+    "textavarp",
 ]
+
 
 def help_text(lemma: str) -> str:
     """Help text to return when query.py is unable to parse a query but
@@ -27,224 +32,462 @@ def help_text(lemma: str) -> str:
     return "Ég get svarað ef þú spyrð til dæmis: {0}?".format(
         random.choice(
             (
-                "Hækka hljóðið",
-                "Lækka hljóðstyrkinn",
-                "Hækka",
-                "Þagna",
-                "Þögn!",
+                "Aðalvalmynd",
+                "Textavarp",
+                "Kveikja á textavarpi",
+                "Spólaðu áfram",
             )
         )
     )
+
 
 # This module wants to handle parse trees for queries
 HANDLE_TREE = True
 
 # The grammar nonterminals this module wants to handle
-QUERY_NONTERMINALS = {"QRemote"}
+QUERY_NONTERMINALS = {"QTVRemote"}
 
 # The context-free grammar for the queries recognized by this plug-in module
 GRAMMAR = """
 
-Query →
-    QRemote
- 
-QRemote → QRemoteQuery '?'?
+Query → QTVRemote
 
-QRemoteQuery →
-    QMuteQuery | QTVQuery | QVODQuery | QMenuQuery | QDPadQuery | QNumPadQuery | QPlaybackQuery
+QTVRemote → QTVRemoteQuery '?'?
 
-QTVQuery →
-    "sjónvarp"
+# Each button or group of buttons on the remote
+QTVRemoteQuery →
+    QTVRemoteMute
+    # | QTVRemotePower # TODO: Is this possible?
+    | QTVRemoteNumPad
+    | QTVRemoteTV
+    | QTVRemoteVOD
+    | QTVRemoteMenu
+    | QTVRemoteDPad # TODO: Repeat x times
+    | QTVRemotePlayback
+    # | Misc buttons (color buttons, so on)
 
-QVODQuery →
-    "aðalvalmynd"
+QTVRemoteMute →
+    "þögn"
+    | "þagna" "þú"?
+    | "þagnaðu"
+    | "þagnað"
+    # | "ragna" | "vegna" | "gagna" | "fagna" | "magna"
 
-QMenuQuery →
-    "valmynd" | "valnefnd"
+# Number buttons
 
-QDPadQuery →
-    QDPadUp | QDPadDown | QDPadLeft | QDPadRight | QDPadOk | QDPadBack | QDPadInfo | QDPadTeletext
+QTVRemoteNumPad →
+    QTVRemoteNumPadBackspace  # TODO: Repeatable (x letters)
+    | QTVRemoteNumPadSearch
 
-QNumPadQuery →
-    QNumPadBackspace | QNumPadSearch
+QTVRemoteNumPadBackspace →
+    "stroka" "út"?
+    | "strokaðu" "út"?
 
-QPlaybackQuery →
-    QRewind | QPlay | QFF | QStop | QPause
-
-QProgramQuery →
-    QProgramUp | QProgramDown
-QNumPadBackspace →
-    "stroka" | "stroka" "út"
-
-QNumPadSearch →
+QTVRemoteNumPadSearch →
     "leita"
+    | "leitaðu"
+    | "leit"
+    | "leitartakkinn"
+    | QTVRemoteFarðuÍ "leitina"
 
-QDPadUp →
+# TV/VOD/Menu buttons
+
+QTVRemoteTV →
+    QTVRemoteFarðuÍ? "sjónvarp"
+    | QTVRemoteFarðuÍ? "sjónvarpið"
+    | "sjónvarpstakki"
+    | "sjónvarpstakkinn"
+
+QTVRemoteVOD →
+    QTVRemoteFarðuÍ? "aðalvalmynd"
+    | "aðalvalmyndin"
+    | QTVRemoteFarðuÍ "aðalvalmyndina"
+    | QTVRemoteFarðuÍ? "aðal" "valmynd"
+    | "aðal" "valmyndin"
+    | QTVRemoteFarðuÍ "aðal" "valmyndina"
+
+QTVRemoteMenu →
+    QTVRemoteFarðuÍ? "valmynd"
+    | "valmyndin"
+    | QTVRemoteFarðuÍ "valmyndina"
+    | "valnefnd"
+
+# Directional buttons (DPad)
+
+QTVRemoteDPad →
+    "farðu"? QTVRemoteXTimes? QTVRemoteDirections
+    | QTVRemoteDPadOk
+    | QTVRemoteDPadBack
+    | QTVRemoteDPadInfo
+    | QTVRemoteDPadTeletext
+
+QTVRemoteDirections →
+    QTVRemoteDPadUp
+    | QTVRemoteDPadDown
+    | QTVRemoteDPadLeft
+    | QTVRemoteDPadRight
+
+QTVRemoteDPadUp →
     "upp"
 
-QDPadDown →
+QTVRemoteDPadDown →
     "niður"
 
-QDPadLeft →
-    "vinstri"
+QTVRemoteDPadLeft →
+    "til"? "vinstri"
 
-QDPadRight →
-    "hægri" | "vigri"
+QTVRemoteDPadRight →
+    "til"? "hægri"
+    # | "vigri"
 
-QDPadOk →
-    "ok" | "okei" | "ókei" | "engey"
+QTVRemoteXTimes →
+    QTVRemoteNumber "sinnum"?
 
-QDPadBack →
-    "bakka" | "til_baka" 
-    | "þakka" | "vaka" | "pakka"
+QTVRemoteDPadOk →
+    "ok"
+    | "okei"
+    | "ókei"
+    # | "engey"
 
-QDPadInfo →
+QTVRemoteDPadBack →
+    "bakka"
+    | "farðu"? QTVRemoteBackwards
+    | "bakkaðu"
+    # | "þakka"
+    # | "pakka"
+    # | "vaka"
+
+QTVRemoteDPadInfo →
     "upplýsingar"
+    | "upplýsingatakki"
 
-QDPadTeletext →
-    "textavarp"
+QTVRemoteDPadTeletext →
+    QTVRemoteFarðuÍ? "textavarp"
+    | QTVRemoteFarðuÍ? "textavarpið"
+    | "kveikja" "á" "textavarpi"
+    | "kveiktu" "á" "textavarpi"
+    | "textavarpstakki"
 
-QNumPadTV →
-    "sjónvarp"
+QTVRemotePlayback →
+    QTVRemotePause
+    | QTVRemotePlay
+    | QTVRemoteStop
+    | QTVRemoteRewind
+    | QTVRemoteFF
 
-QMuteQuery →
-    "þögn" | "þagna"  | "þagnað" | "þagna" "þú" | "þagnaðu" | "þegið" | "þegiðu"
-    | "þegja" | "teygja" | "beygja" | "treyja" | "freyja" | "feginn"
-    | "ragna" | "vegna" | "gagna"| "fagna" | "magna"
+QTVRemoteChannels →
+    QTVRemoteChannelNext
+    | QTVRemoteChannelPrevious
 
-QChannelChangeQuery →
-    "skiptu" | "flettu" | "settu" | "skipta" | "fletta" | "setja" | "settu"
+# For fast-forwarding/rewinding a specific time interval
+# QTVRemoteXTime →
+#     QTVRemoteXMinutes | QTVRemoteXSeconds
+# QTVRemoteXMinutes →
+# QTVRemoteXSeconds →
 
-QRewind →
-    "spóla" "aftur" | "spóla" "til_baka"
-
-QPlay →
-    "andskotinn"
-
-QFF →
+QTVRemoteFF →
     "spóla" "áfram"
+    | "spólaðu" "áfram"
 
-QStop →
-    "stopp" | "stans"
+QTVRemoteRewind →
+    "spóla" QTVRemoteBackwards
+    | "spólaðu" QTVRemoteBackwards
+    # 'farðu x sek til baka'
 
-QPause →
-    "pása" | "bíddu"
-    | "hása" | "kássa"
+QTVRemoteFarðuÍ →
+    "farðu" "í"
 
-QProgramUp →
-    "rás" "upp" | "rás" "áfram"
+# (Both 'aftur á bak' and 'afturábak' are recognized by Greynir)
+QTVRemoteBackwards →
+    "aftur"? "til_baka"
+    | "aftur" QTVRemoteÁBak?
+    | "afturábak"
 
-QProgramDown →
-    "rás" "niður" | "rás" "til_baka"
+QTVRemoteÁBak →
+    "á" "bak"
 
+QTVRemoteProgramAccusative →
+    "myndina"
+    | "bíómyndina"
+    | "kvikmyndina"
+    | "þáttinn"
+
+QTVRemoteSpilun →
+    "spilun"
+    | "að" "spila"
+
+# 'Haltu áfram með myndina', 'Spilaðu áfram', 'Halda áfram spilun'
+QTVRemotePlay →
+    "spila" "áfram"? "mynd"?
+    | "spilaðu" "áfram"? QTVRemoteProgramAccusative?
+    | "halda" "áfram"
+    | "haltu" "áfram" QTVRemoteSpilun?
+    | "haltu" "áfram" "með" QTVRemoteProgramAccusative
+
+QTVRemoteStop →
+    "stopp"
+    | "stoppa" "þú"? QTVRemoteSpilun?
+    | "stoppaðu" QTVRemoteSpilun?
+    | "stans"
+    | "stansaðu"
+    | "hættu" QTVRemoteSpilun
+
+QTVRemotePause →
+    "pása" "spilun"?
+    | "pásaðu" QTVRemoteSpilun?
+    | "bíddu"
+    | "settu" QTVRemoteProgramAccusative? "á" "pásu"
+    # | "hása" | "kássa"
+
+QTVRemoteChannelNext →
+    QTVRemoteChannel "upp"
+    | QTVRemoteChannel "áfram"
+    | "næsta" QTVRemoteChannel
+    # 'skiptu/farðu yfir á næstu rás'?
+
+QTVRemoteChannelPrevious →
+    QTVRemoteChannel "niður"
+    | QTVRemoteChannel "til_baka"
+    | "fyrri" QTVRemoteChannel
+    # 'skiptu/farðu yfir á rásina á undan'?
+
+QTVRemoteChannel →
+    "sjónvarps"? "rás"
+    | "sjónvarps"? "stöð"
+    | "sjónvarpsstöð"
+    | "sjónvarpsrás"
+
+QTVRemoteChannelChange →
+    "skipta"
+    | "skiptu"
+    | "setja"
+    | "settu"
+    | "fletta"
+    | "flettu"
+    | "farðu"
+
+# Misc buttons
+
+# ---
+
+# Note: not the numpad on the remote, just numbers
+QTVRemoteNumber →
+    QTVRemoteNumTens "og" QTVRemoteNum1To9
+    | tala
+    | töl
+    | to
+    | "tvisvar"
+    | "þrisvar"
+
+QTVRemoteNum0 → "núll"
+
+QTVRemoteNum1To9 →
+    'einn:to'
+    | 'tveir:to'
+    | 'þrír:to'
+    | 'fjórir:to'
+    | "fimm"
+    | "sex"
+    | "sjö"
+    | "átta"
+    | "níu"
+
+QTVRemoteNumTens →
+    "tuttugu"
+    | "þrjátíu"
+    | "fjörutíu"
+    | "fjörtíu"
+    | "fimmtíu"
+    | "sextíu"
+    | "sjötíu"
+    | "áttatíu"
+    | "níutíu"
 
 """
 
-
-def QRemoteQuery(node, params, result):
-    result.qtype = _SIMINN_QTYPE
-
-
-def QTVQuery(node, params, result):
-    result["command"] = "TV"
-
-
-def QVODQuery(node, params, result):
-    result["command"] = "VOD"
-
-
-def QMenuQuery(node, params, result):
-    result["command"] = "MENU"
-
-
-def QNumPadBackspace(node, params, result):
-    result["command"] = "BACKSPACE"
-
-
-def QNumPadSearch(node, params, result):
-    result["command"] = "SEARCH"
-
-
-def QDPadUp(node, params, result):
-    result["command"] = "UP"
-
-
-def QDPadDown(node, params, result):
-    result["command"] = "DOWN"
-
-
-def QDPadLeft(node, params, result):
-    result["command"] = "LEFT"
-
-
-def QDPadRight(node, params, result):
-    result["command"] = "RIGHT"
-
-
-def QDPadOk(node, params, result):
-    result["command"] = "OK"
-
-
-def QDPadBack(node, params, result):
-    result["command"] = "BACK"
+_NUMBER_WORDS: Mapping[str, float] = {
+    "núll": 0,
+    "einn": 1,
+    "einu": 1,
+    "eitt": 1,
+    "tveir": 2,
+    "tveim": 2,
+    "tvö": 2,
+    "tvisvar": 2,
+    "þrír": 3,
+    "þrem": 3,
+    "þrjú": 3,
+    "þrisvar": 3,
+    "þremur": 3,
+    "fjórir": 4,
+    "fjórum": 4,
+    "fjögur": 4,
+    "fimm": 5,
+    "sex": 6,
+    "sjö": 7,
+    "átta": 8,
+    "níu": 9,
+    "tíu": 10,
+    "ellefu": 11,
+    "tólf": 12,
+    "þrettán": 13,
+    "fjórtán": 14,
+    "fimmtán": 15,
+    "sextán": 16,
+    "sautján": 17,
+    "átján": 18,
+    "nítján": 19,
+    "tuttugu": 20,
+    "þrjátíu": 30,
+    "fjörutíu": 40,
+    "fjörtíu": 40,
+    "fimmtíu": 50,
+    "sextíu": 60,
+    "sjötíu": 70,
+    "áttatíu": 80,
+    "níutíu": 90,
+    "hundrað": 100,
+    "hundruð": 100,
+}
 
 
-def QDPadInfo(node, params, result):
-    result["command"] = "INFO"
+def QTVRemote(node: Node, params: ParamList, result: Result) -> None:
+    result.qtype = _TV_REMOTE_QTYPE
 
 
-def QDPadTeletext(node, params, result):
-    result["command"] = "YELLOW"
+def QTVRemoteMute(node: Node, params: ParamList, result: Result) -> None:
+    # Not in volume.py, as mute button has special functionality
+    # (restores to former volume when toggled off, which would
+    # otherwise have to be implemented in a stateless manner)
+    result["command"] = ["MUTE"]
 
 
-def QMuteQuery(node, params, result):
-    result["command"] = "MUTE"
+def QTVRemoteTV(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["TV"]
 
 
-def QRewind(node, params, result):
-    result["command"] = "REWIND"
+def QTVRemoteVOD(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["VOD"]
 
 
-def QPlay(node, params, result):
-    result["command"] = "PLAY"
+def QTVRemoteMenu(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["MENU"]
 
 
-def QFF(node, params, result):
-    result["command"] = "FORWARD"
+def QTVRemoteNumPadBackspace(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["BACKSPACE"]
 
 
-def QStop(node, params, result):
-    result["command"] = "STOP"
+def QTVRemoteNumPadSearch(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["SEARCH"]
 
 
-def QPause(node, params, result):
-    result["command"] = "PAUSE"
+def QTVRemoteDirections(node: Node, params: ParamList, result: Result) -> None:
+    result["repeatable"] = True
 
 
-def QProgramUp(node, params, result):
-    result["command"] = "PROGRAM_UP"
+def QTVRemoteDPadUp(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["UP"]
 
 
-def QProgramDown(node, params, result):
-    result["command"] = "PROGRAM_DOWN"
+def QTVRemoteDPadDown(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["DOWN"]
+
+
+def QTVRemoteDPadLeft(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["LEFT"]
+
+
+def QTVRemoteDPadRight(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["RIGHT"]
+
+
+def QTVRemoteDPadOk(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["OK"]
+
+
+def QTVRemoteDPadBack(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["BACK"]
+
+
+def QTVRemoteDPadInfo(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["INFO"]
+
+
+def QTVRemoteDPadTeletext(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["YELLOW"]
+
+
+def QTVRemoteRewind(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["REWIND"]
+
+
+def QTVRemotePlay(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["PLAY"]
+
+
+def QTVRemoteFF(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["FORWARD"]
+
+
+def QTVRemoteStop(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["STOP"]
+
+
+def QTVRemotePause(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["PAUSE"]
+
+
+def QTVRemoteProgramUp(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["PROGRAM_UP"]
+
+
+def QTVRemoteProgramDown(node: Node, params: ParamList, result: Result) -> None:
+    result["command"] = ["PROGRAM_DOWN"]
+
+
+def QTVRemoteNumber(node: Node, params: ParamList, result: Result) -> None:
+    # Try to parse numbers such as: "50", "fimmtíu" and "fimmtíu og fjórir"
+    nums: List[str] = result._root.split()
+    s = 0
+    for word in nums:
+        if word.isdecimal():
+            s += int(word)
+        else:
+            s += _NUMBER_WORDS.get(word, 0)
+
+    if s > 0:
+        result["numbers"] = [s]
 
 
 def sentence(state: QueryStateDict, result: Result) -> None:
     """Called when sentence processing is complete."""
     q: Query = state["query"]
-    if (
-        "qtype" in result
-        and result["qtype"] == _SIMINN_QTYPE
-    ):
+    if "qtype" in result and result["qtype"] == _TV_REMOTE_QTYPE:
         try:
-            print("))============>", _SIMINN_QTYPE, "<============((")
-            q.set_qtype(_SIMINN_QTYPE)
-            q.set_answer("", result["command"], "")
+            q.query_is_command()
+            q.set_qtype(_TV_REMOTE_QTYPE)
+
+            if result.get("repeatable", False) and "numbers" in result:
+                # Keypress multipliers
+                result["command"].append("MUL")
+                result["command"] += result["numbers"]
+
+            if result.get("timespan", False) and "numbers" in result:
+                # Keypress multipliers
+                result["command"].append("SECONDS")
+                result["command"] += result["numbers"]
+
+            # Return the command as a string delimited by semicolons
+            # Format: REMOTE;<key pressed>;<additional args>
+            # Additional args can be multipliers (press a key multiple times) (MUL;x)
+            # or a time span (given in seconds) for fast-forwarding or rewinding (SECONDS;x)
+
+            ans: str = ";".join(["REMOTE"] + result["command"])
+            q.set_answer({"answer": ans}, ans)
             return
         except Exception as e:
-            logging.warning(
-                "Exception generating answer from Remote: {0}".format(e)
-            )
+            logging.warning("Exception generating answer from Remote: {0}".format(e))
             q.set_error("E_EXCEPTION: {0}".format(e))
     else:
         q.set_error("E_QUERY_NOT_UNDERSTOOD")
