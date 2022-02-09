@@ -90,7 +90,6 @@ QTimeTravelDayBeforeYesterday →
 
 """
 
-
 def QTimeTravelQuery(node, params, result):
     result.qtype = _TIMETRAVEL_QTYPE
 

@@ -13,8 +13,6 @@ from reynir import NounPhrase
 
 from . import AnswerTuple, LatLonTuple
 
-_SIMINN_QTYPE = "Volume"
-
 TOPIC_LEMMAS = [
     "hækka",
     "lækka",
@@ -27,14 +25,14 @@ TOPIC_LEMMAS = [
 _NUMBER_WORDS: Mapping[str, float] = {
     "núll": 0,
     "einn": 1,
-    "einu": 1,
+    "eitt": 1,
     "tveir": 2,
-    "tveim": 2,
+    "tvö": 2,
     "þrír": 3,
-    "þrem": 3,
+    "þrjú": 3,
     "þremur": 3,
     "fjórir": 4,
-    "fjórum": 4,
+    "fjögur": 4,
     "fimm": 5,
     "sex": 6,
     "sjö": 7,
@@ -112,6 +110,7 @@ QVolumePercent → Prósenta
 """
 
 def QVolumePercent(node, params, result):
+    result.qtype = "VolumePercentage"
     result._canonical = result._text
     n = result._text.split()
     print(result._canonical)
@@ -127,16 +126,15 @@ def QVolumePercent(node, params, result):
     else:
         print("tjah, hvað er í gangi hér?")
 
-def QVolumeQuery(node, params, result):
-    result.qtype = _SIMINN_QTYPE
-
 
 def QVolumeUpQuery(node, params, result):
-    result["command"] = "VOLUME_UP"
+    result.qtype = "Volume"
+    result["command"] = "+"
 
 
 def QVolumeDownQuery(node, params, result):
-    result["command"] = "VOLUME_DOWN"
+    result.qtype = "Volume"
+    result["command"] = "-"
 
 
 def QVolumeMuteQuery(node, params, result):
@@ -175,11 +173,11 @@ def sentence(state: QueryStateDict, result: Result) -> None:
     q: Query = state["query"]
     if (
         "qtype" in result
-        and result["qtype"] == _SIMINN_QTYPE
+        and result["qtype"] == "Volume" or "VolumePercentage"
     ):
         try:
-            print("))============>", _SIMINN_QTYPE, "<============((")
-            q.set_qtype(_SIMINN_QTYPE)
+            print("))============>", result["qtype"], "<============((")
+            q.set_qtype(result["qtype"])
             q.set_answer("", result["command"], "")
             return
         except Exception as e:
