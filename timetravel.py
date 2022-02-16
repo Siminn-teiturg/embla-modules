@@ -16,9 +16,8 @@ from . import AnswerTuple, LatLonTuple
 _TIMETRAVEL_QTYPE = "Timetravel"
 _STARTOVER_QTYPE = "Startover"
 
-TOPIC_LEMMAS = [
-    "spila"
-]
+TOPIC_LEMMAS = ["spila"]
+
 
 def help_text(lemma: str) -> str:
     """Help text to return when query.py is unable to parse a query but
@@ -32,6 +31,7 @@ def help_text(lemma: str) -> str:
             )
         )
     )
+
 
 # This module wants to handle parse trees for queries
 HANDLE_TREE = True
@@ -56,10 +56,7 @@ QStartOverQuery →
     "byrja" "upp" "á" "nýtt"
     | "byrja" "byrjun"
 
-QTimeTravelCourtesy →
-    "getur" 
-    | "getur" "þú" 
-    | "geturðu" 
+QTimeTravelCourtesy → "getur" | "getur" "þú" | "geturðu" | "gætirðu"
 
 QTimeTravelKeyword →
     "spila" | "spilar" | "spilaðu" | "spilað"  | "spilaði"
@@ -78,6 +75,9 @@ QTimeTravelSince →
 
 QTimeTravelWhen →
     QTimeTravelToday | QTimeTravelYesterday | QTimeTravelDayBeforeYesterday
+# Prevents strings matching timing being matched as a part of the program
+# Programs containing "í dag", "í gær" or "í fyrradag" need be handled specifically
+$score(+72) QTimeTravelWhen  # This prevents it from being analyzed as part of the NP
 
 QTimeTravelToday →
     "í" "dag"
@@ -90,11 +90,14 @@ QTimeTravelDayBeforeYesterday →
 
 """
 
+
 def QTimeTravelQuery(node, params, result):
     result.qtype = _TIMETRAVEL_QTYPE
 
+
 def QStartOverQuery(node, params, result):
     result.qtype = _STARTOVER_QTYPE
+
 
 def QTimeTravelProgram(node, params, result):
     nl = NounPhrase(result._nominative)
@@ -133,33 +136,27 @@ def sentence(state: QueryStateDict, result: Result) -> None:
         result["when"] = "today"
 
     q: Query = state["query"]
-    if (
-        "qtype" in result
-        and result["qtype"] == _TIMETRAVEL_QTYPE
-    ):
+    if "qtype" in result and result["qtype"] == _TIMETRAVEL_QTYPE:
         try:
             print("))============>", _TIMETRAVEL_QTYPE, "<============((")
             q.set_qtype(_TIMETRAVEL_QTYPE)
-            q.set_answer("", [result["when"], result["program-angr"], result["program-nf"]], "")
+            q.set_answer(
+                "", [result["when"], result["program-angr"], result["program-nf"]], ""
+            )
             return
         except Exception as e:
             logging.warning(
                 "Exception generating answer from Timetravel: {0}".format(e)
             )
             q.set_error("E_EXCEPTION: {0}".format(e))
-    elif (
-        "qtype" in result
-        and result["qtype"] == _STARTOVER_QTYPE
-    ):
+    elif "qtype" in result and result["qtype"] == _STARTOVER_QTYPE:
         try:
             print("))============>", _STARTOVER_QTYPE, "<============((")
             q.set_qtype(_STARTOVER_QTYPE)
             q.set_answer("", "startover", "")
             return
         except Exception as e:
-            logging.warning(
-                "Exception generating answer from TVCP: {0}".format(e)
-            )
+            logging.warning("Exception generating answer from TVCP: {0}".format(e))
             q.set_error("E_EXCEPTION: {0}".format(e))
     else:
         q.set_error("E_QUERY_NOT_UNDERSTOOD")
