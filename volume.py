@@ -104,6 +104,7 @@ QVolumeDownQuery →
 
 QVolumeVolume →
     "hljóð" | "hljóðið" | "hljóðstyrk" | "hljóðstyrkinn"
+    | "ljóð"
 
 QVolumePercent → Prósenta
 
