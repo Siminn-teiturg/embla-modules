@@ -126,6 +126,7 @@ QVolumeDown →
 QVolumeVolume →
     "hljóð" | "hljóðið" | "hljóðstyrk" | "hljóðstyrkinn" 
     | "hljóðstyrkur"
+    | "ljóð"
 
 QVolumePPUp → "upp" "í" | "í" | "alveg" "upp" "í"
 
