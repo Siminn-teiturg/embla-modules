@@ -60,6 +60,7 @@ _NUMBER_WORDS: Mapping[str, float] = {
     "hundruð": 100,
 }
 
+
 def help_text(lemma: str) -> str:
     """Help text to return when query.py is unable to parse a query but
     one of the above lemmas is found in it"""
@@ -71,10 +72,11 @@ def help_text(lemma: str) -> str:
                 "Hækka",
                 "Þagna",
                 "Þögn!",
-                "hljóð fimmtíu prósent"
+                "hljóð fimmtíu prósent",
             )
         )
     )
+
 
 # This module wants to handle parse trees for queries
 HANDLE_TREE = True
@@ -88,27 +90,72 @@ GRAMMAR = """
 Query →
     QVolume
  
-QVolume → QVolumeQuery '?'?
+QVolume → 
+    QVolumePercQuery '?'?
+    | QVolumeAbsQuery '?'?
 
-QVolumeQuery →
-    QVolumeUpQuery QVolumeVolume?
-    | QVolumeDownQuery QVolumeVolume?
-    | QVolumeVolume QVolumePercent
+QVolumePercQuery →
+    QVolumeUpQuery QVolumeVolume?                               # [Hækkaðu] [hljóð]?
+    | QVolumeDownQuery QVolumeVolume?                           # [Lækkaðu] [hljóð]?
+    | QVolumeVolume QVolumePercent                              # [Hljóð] [50 prósent]
+    | QVolumeUp QVolumeVolume? QVolumePPUp? QVolumePercent      # [Hækkaðu] [(hljóð)] [(í) 50 prósent]
+    | QVolumeDown QVolumeVolume? QVolumePPDown? QVolumePercent  # [Lækkaðu] [(hljóð)] [(í) 50 prósent]
+    | QVolumeMuteQuery                                          # [Lækkaðu í botn]
 
-QVolumeUpQuery →
+QVolumeAbsQuery →
+    QVolumeVolume QVolumeAbs                                    # [Hljóð] [12]
+    | QVolumeUp QVolumeVolume? QVolumePPUp? QVolumeAbs          # [Hækkaðu] [(hljóð)] [(í) 12]
+    | QVolumeDown QVolumeVolume? QVolumePPDown? QVolumeAbs      # [Lækkaðu] [(hljóð)] [(í) 12]
+
+QVolumeAbs → töl | tala | to
+
+QVolumeUpVP → QVolumeUpQuery QVolumePPUp?
+QVolumeDownVP → QVolumeDownQuery QVolumePPDown?
+
+QVolumeUpQuery → QVolumeUp
+
+QVolumeUp →
     "hækka" | "hækka" "þú" | "hækkaðu" | "hækkað" 
     | "fækka"
 
-QVolumeDownQuery →
+QVolumeDownQuery → QVolumeDown
+
+QVolumeDown → 
     "lækka" | "lækkað" | "lækka" "þú" | "lækkaðu" 
 
 QVolumeVolume →
-    "hljóð" | "hljóðið" | "hljóðstyrk" | "hljóðstyrkinn"
+    "hljóð" | "hljóðið" | "hljóðstyrk" | "hljóðstyrkinn" 
+    | "hljóðstyrkur"
     | "ljóð"
+
+QVolumePPUp → "upp" "í" | "í" | "alveg" "upp" "í"
+
+QVolumePPDown → "niður" "í" | "í" | "alveg" "niður" "í"
 
 QVolumePercent → Prósenta
 
+QVolumeMuteQuery → QVolumeDownQuery QVolumeMute
+
+QVolumeMute → "í" "botn" | "alveg" "niður"?
+
 """
+
+
+def QVolumeAbs(node, params, result):
+    result.qtype = "VolumeSet"
+    result._canonical = result._text
+    n = result._text.split()
+    print(result._canonical)
+    print("N:", n, type(n))
+    if n[0].isdecimal():
+        print(n[0], "is decimal")
+        result["command"] = int(n[0])  # 8
+    elif n[0] in _NUMBER_WORDS:
+        print(n[0], "is not decimal")
+        result["command"] = _NUMBER_WORDS[n[0]]  # átta
+    else:
+        print("tjah, hvað er í gangi hér?")
+
 
 def QVolumePercent(node, params, result):
     result.qtype = "VolumePercentage"
@@ -120,10 +167,10 @@ def QVolumePercent(node, params, result):
     # hvad gaeti fokkad thessu upp?
     if n[0].isdecimal():
         print(n[0], "is decimal")
-        result["command"] = int(n[0])           # 8
+        result["command"] = int(n[0])  # 8
     elif n[0] in _NUMBER_WORDS:
         print(n[0], "is not decimal")
-        result["command"] = _NUMBER_WORDS[n[0]] # átta
+        result["command"] = _NUMBER_WORDS[n[0]]  # átta
     else:
         print("tjah, hvað er í gangi hér?")
 
@@ -169,22 +216,18 @@ def parse_num(num_str: str) -> float:
         raise
     return num
 
+
 def sentence(state: QueryStateDict, result: Result) -> None:
     """Called when sentence processing is complete."""
     q: Query = state["query"]
-    if (
-        "qtype" in result
-        and result["qtype"] == "Volume" or "VolumePercentage"
-    ):
+    if "qtype" in result and result["qtype"] == "Volume" or "VolumePercentage":
         try:
             print("))============>", result["qtype"], "<============((")
             q.set_qtype(result["qtype"])
             q.set_answer("", result["command"], "")
             return
         except Exception as e:
-            logging.warning(
-                "Exception generating answer from Volume: {0}".format(e)
-            )
+            logging.warning("Exception generating answer from Volume: {0}".format(e))
             q.set_error("E_EXCEPTION: {0}".format(e))
     else:
         q.set_error("E_QUERY_NOT_UNDERSTOOD")

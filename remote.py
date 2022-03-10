@@ -21,6 +21,7 @@ TOPIC_LEMMAS = [
     "hljóðstyrkur",
 ]
 
+
 def help_text(lemma: str) -> str:
     """Help text to return when query.py is unable to parse a query but
     one of the above lemmas is found in it"""
@@ -35,6 +36,7 @@ def help_text(lemma: str) -> str:
             )
         )
     )
+
 
 # This module wants to handle parse trees for queries
 HANDLE_TREE = True
@@ -51,7 +53,8 @@ Query →
 QRemote → QRemoteQuery '?'?
 
 QRemoteQuery →
-    QMuteQuery | QTVQuery | QVODQuery | QMenuQuery | QDPadQuery | QNumPadQuery | QPlaybackQuery
+    QMuteQuery | QTVQuery | QVODQuery | QMenuQuery | QDPadQuery | QNumPadQuery | QPlaybackQuery | QReloadQuery
+    | QQuitQuery | QOptionsQuery | QLanguageQuery | QFavoriteQuery | QProgramQuery | QChannelChangeQuery
 
 QTVQuery →
     "sjónvarp"
@@ -73,8 +76,10 @@ QPlaybackQuery →
 
 QProgramQuery →
     QProgramUp | QProgramDown
+$score(+720) QProgramQuery
+
 QNumPadBackspace →
-    "stroka" | "stroka" "út"
+    "stroka" | "stroka" "út" | "eyða" | "eyða" "út" | "hreinsa"
 
 QNumPadSearch →
     "leita"
@@ -92,7 +97,7 @@ QDPadRight →
     "hægri" | "vigri"
 
 QDPadOk →
-    "ok" | "okei" | "ókei" | "engey"
+    "ok" | "okei" | "ókei" | "engey" | "samþykkt"
 
 QDPadBack →
     "bakka" | "til_baka" 
@@ -112,31 +117,63 @@ QMuteQuery →
     | "þegja" | "teygja" | "beygja" | "treyja" | "freyja" | "feginn"
     | "ragna" | "vegna" | "gagna"| "fagna" | "magna"
 
-QChannelChangeQuery →
-    "skiptu" | "flettu" | "settu" | "skipta" | "fletta" | "setja" | "settu"
+QChannelChangeQuery → QChannelChangeVP QChannelChangePP
 
-QRewind →
-    "spóla" "aftur" | "spóla" "til_baka"
+QChannelChangeVP → "skiptu" | "flettu" | "settu" | "skipta" | "fletta" | "setja" | "stilltu"
+
+QChannelChangePP → "yfir"? "á" QChannel
+
+QChannel →  "RÚV" | "Rúv" | "rúv" | QStod2 | QStod2 "sport" | QStod2 "sport" "tvö"
+            | QStod2 "bíó" | "stöð" "þrjú" | "stöð" "3" | "rás" "eitt" | "rás" "1"
+            | "rás" "tvö" | "rás" "2"
+
+QStod2 → "stöð" "tvö" | "stöð" "2"
+
+QReloadQuery → "endurhlaða" | "byrja" "upp" "á" "nýtt" | "byrjaðu" "upp" "á" "nýtt"
 
 QPlay →
-    "andskotinn"
+    "spila" "áfram" | "halda" "áfram" | "spila" | "áfram"
 
-QFF →
-    "spóla" "áfram"
+QRewind → QSpolaVerb QRewindAdv
+
+QFF → QSpolaVerb QFFAdv
+
+QSpolaVerb → "spóla" | "spólaðu"
+
+QRewindAdv → "aftur" | "til_baka" | "aftur" "á" "bak"
+QFFAdv → "áfram" | "fram" "á" "við"
 
 QStop →
-    "stopp" | "stans"
+    "stopp" | "stans" | "stoppa" | "stoppaðu" | "stansaðu"
 
 QPause →
-    "pása" | "bíddu"
+    "pása" | "bíddu" | "pásaðu"
     | "hása" | "kássa"
 
-QProgramUp →
-    "rás" "upp" | "rás" "áfram"
+QProgramUp → QStod QAdvUp | QAdjStodUp QStod | QChange
 
-QProgramDown →
-    "rás" "niður" | "rás" "til_baka"
+QProgramDown → QStod QAdvDown | QAdjStodDown QStod
 
+QStod → "stöð" | "rás"
+
+QAdvUp → "upp" | "áfram" | "fram" "á" "við"
+QAdjStodUp → "næsta"
+
+QAdvDown → "niður" | "til_baka"
+QAdjStodDown → "síðasta" | "seinasta" | "fyrri"
+
+QChange → QChangeVP QStod
+QChangeVP → "skiptu" "um" | "skipta" "um"
+
+QQuitQuery → "hætta" | "hættu"
+
+QOptionsQuery → "valmöguleikar"
+
+QLanguageQuery → "tungumál"
+
+QFavoriteQuery → QFavoriteVerb? "uppáhald"
+
+QFavoriteVerb → "setja" "í" | "settu" "í" | "bæta" "við" "í"? | "bættu" "við" "í"?
 
 """
 
@@ -229,22 +266,43 @@ def QProgramDown(node, params, result):
     result["command"] = "PROGRAM_DOWN"
 
 
+def QReloadQuery(node, params, result):
+    result["command"] = "RELOAD"
+
+
+def QQuitQuery(node, params, result):
+    result["command"] = "QUIT"
+
+
+def QFavoriteQuery(node, params, result):
+    result["command"] = "FAVORITE"
+
+
+def QOptionsQuery(node, params, result):
+    result["command"] = "OPTIONS"
+
+
+def QLanguageQuery(node, params, result):
+    result["command"] = "LANGUAGE"
+
+
+def QChannel(node, params, result):
+    # TODO þarf annað qtype hér?
+    # TODO þýða yfir á channel_id
+    result["command"] = result._text.lower()
+
+
 def sentence(state: QueryStateDict, result: Result) -> None:
     """Called when sentence processing is complete."""
     q: Query = state["query"]
-    if (
-        "qtype" in result
-        and result["qtype"] == _SIMINN_QTYPE
-    ):
+    if "qtype" in result and result["qtype"] == _SIMINN_QTYPE:
         try:
             print("))============>", _SIMINN_QTYPE, "<============((")
             q.set_qtype(_SIMINN_QTYPE)
             q.set_answer("", result["command"], "")
             return
         except Exception as e:
-            logging.warning(
-                "Exception generating answer from Remote: {0}".format(e)
-            )
+            logging.warning("Exception generating answer from Remote: {0}".format(e))
             q.set_error("E_EXCEPTION: {0}".format(e))
     else:
         q.set_error("E_QUERY_NOT_UNDERSTOOD")
