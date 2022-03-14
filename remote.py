@@ -114,7 +114,8 @@ QNumPadTV →
 
 QMuteQuery →
     "þögn" | "þagna"  | "þagnað" | "þagna" "þú" | "þagnaðu" | "þegið" | "þegiðu"
-    | "þegja" | "teygja" | "beygja" | "treyja" | "freyja" | "feginn"
+    | "þegja" | "suss"
+    | "teygja" | "beygja" | "treyja" | "freyja" | "feginn"
     | "ragna" | "vegna" | "gagna"| "fagna" | "magna"
 
 QPlay →
