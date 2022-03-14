@@ -53,8 +53,8 @@ Query →
 QRemote → QRemoteQuery '?'?
 
 QRemoteQuery →
-    QMuteQuery | QTVQuery | QVODQuery | QMenuQuery | QDPadQuery | QNumPadQuery | QPlaybackQuery | QReloadQuery
-    | QQuitQuery | QOptionsQuery | QLanguageQuery | QFavoriteQuery | QProgramQuery | QChannelChangeQuery
+    QMuteQuery | QTVQuery | QVODQuery | QMenuQuery | QDPadQuery | QNumPadQuery | QPlaybackQuery
+    | QProgramQuery
 
 QTVQuery →
     "sjónvarp"
@@ -117,20 +117,6 @@ QMuteQuery →
     | "þegja" | "teygja" | "beygja" | "treyja" | "freyja" | "feginn"
     | "ragna" | "vegna" | "gagna"| "fagna" | "magna"
 
-QChannelChangeQuery → QChannelChangeVP QChannelChangePP
-
-QChannelChangeVP → "skiptu" | "flettu" | "settu" | "skipta" | "fletta" | "setja" | "stilltu"
-
-QChannelChangePP → "yfir"? "á" QChannel
-
-QChannel →  "RÚV" | "Rúv" | "rúv" | QStod2 | QStod2 "sport" | QStod2 "sport" "tvö"
-            | QStod2 "bíó" | "stöð" "þrjú" | "stöð" "3" | "rás" "eitt" | "rás" "1"
-            | "rás" "tvö" | "rás" "2"
-
-QStod2 → "stöð" "tvö" | "stöð" "2"
-
-QReloadQuery → "endurhlaða" | "byrja" "upp" "á" "nýtt" | "byrjaðu" "upp" "á" "nýtt"
-
 QPlay →
     "spila" "áfram" | "halda" "áfram" | "spila" | "áfram"
 
@@ -164,16 +150,6 @@ QAdjStodDown → "síðasta" | "seinasta" | "fyrri"
 
 QChange → QChangeVP QStod
 QChangeVP → "skiptu" "um" | "skipta" "um"
-
-QQuitQuery → "hætta" | "hættu"
-
-QOptionsQuery → "valmöguleikar"
-
-QLanguageQuery → "tungumál"
-
-QFavoriteQuery → QFavoriteVerb? "uppáhald"
-
-QFavoriteVerb → "setja" "í" | "settu" "í" | "bæta" "við" "í"? | "bættu" "við" "í"?
 
 """
 
@@ -264,26 +240,6 @@ def QProgramUp(node, params, result):
 
 def QProgramDown(node, params, result):
     result["command"] = "PROGRAM_DOWN"
-
-
-def QReloadQuery(node, params, result):
-    result["command"] = "RELOAD"
-
-
-def QQuitQuery(node, params, result):
-    result["command"] = "QUIT"
-
-
-def QFavoriteQuery(node, params, result):
-    result["command"] = "FAVORITE"
-
-
-def QOptionsQuery(node, params, result):
-    result["command"] = "OPTIONS"
-
-
-def QLanguageQuery(node, params, result):
-    result["command"] = "LANGUAGE"
 
 
 def QChannel(node, params, result):
