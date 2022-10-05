@@ -100,7 +100,7 @@ QDPadOk →
     "ok" | "okei" | "ókei" | "engey" | "samþykkt"
 
 QDPadBack →
-    "bakka" | "til_baka" 
+    "bakka" | "til_baka" | "hætta"
     | "þakka" | "vaka" | "pakka"
 
 QDPadInfo →

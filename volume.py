@@ -165,6 +165,7 @@ def QVolumePercent(node, params, result):
     print("N:", n, type(n))
     # skoda rett control flow
     # hvad gaeti fokkad thessu upp?
+    n[0] = n[0].rstrip("%")
     if n[0].isdecimal():
         print(n[0], "is decimal")
         result["command"] = int(n[0])  # 8

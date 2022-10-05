@@ -1,22 +1,15 @@
-from typing import List, Dict, Optional
-from islenska import Bin
-from reynir import Greynir
+from typing import List, Dict, Optional, Match
 
-import logging
-import cachetools  # type: ignore
+
+import re
 import random
 
-from query import Query, QueryStateDict
-from queries import query_json_api
-from tree import Result
+from query import Query
 from reynir import NounPhrase
 
-from . import AnswerTuple, LatLonTuple
 
 _TIMETRAVEL_QTYPE = "Timetravel"
 _STARTOVER_QTYPE = "Startover"
-
-TOPIC_LEMMAS = ["spila"]
 
 
 def help_text(lemma: str) -> str:
@@ -25,138 +18,86 @@ def help_text(lemma: str) -> str:
     return "Ég get svarað ef þú spyrð til dæmis: {0}?".format(
         random.choice(
             (
-                "Spila Gísla Martein í kvöld",
-                "Spila Kiljuna frá í gær",
-                "Spila Tíufréttir frá því í fyrradag",
+                "Spilaðu Gísla Martein í kvöld",
+                "Gætirðu spilað Kiljuna frá í gær",
+                "Spilaðu Tíufréttir frá því í fyrradag",
             )
         )
     )
 
 
-# This module wants to handle parse trees for queries
-HANDLE_TREE = True
+_STARTOVER_RE = (
+    r"^byrja(ðu)?( þáttinn| myndina)?( aftur)? upp á nýtt$",
+    r"^byrja(ðu)?( þáttinn| myndina)?(( aftur)? frá)? byrjun(inni)?$",
+)
 
-# The grammar nonterminals this module wants to handle
-QUERY_NONTERMINALS = {"QTimeTravel", "QStartOver"}
+# Ways of saying 'from ...'
+_SINCE_RE = r"(frá( (því|það))?|síðan)"
+# Ways of saying 'today'
+_TODAY_RE = rf"(?P<today>{_SINCE_RE}? í (dag|kvöld|morgun))"
+# Ways of saying 'yesterday'
+_YESTERDAY_RE = rf"(?P<yesterday>{_SINCE_RE}? í gær(kvöldi?|morgun)?)"
+# Ways of saying 'day before yesterday'
+_DAYBEFOREYESTERDAY_RE = rf"(?P<daybeforeyesterday>{_SINCE_RE}? í fyrradag)"
+# Ways of specifying date
+_WHEN_RE = r"( ?({}) ?)".format(
+    "|".join(
+        (
+            _TODAY_RE,
+            _YESTERDAY_RE,
+            _DAYBEFOREYESTERDAY_RE,
+        )
+    )
+)
+# Common courtesies
+_CAN_YOU_RE = r"( ?({}) ?)".format(
+    "|".join(
+        (
+            r"geturðu",
+            r"getur þú",
+            r"gætirðu",
+            r"værirðu til í að",
+        )
+    )
+)
+# Ways of saying 'play'
+_PLAY_RE = r"( ?({}) ?)".format(
+    "|".join(
+        (
+            r"spilaðu?",
+            r"spilaði",
+            r"spilar(ðu)?",
+            r"spila",
+            r"spilað? fyrir mig",
+        )
+    )
+)
 
-# The context-free grammar for the queries recognized by this plug-in module
-GRAMMAR = """
-
-Query →
-    QTimeTravel | QStartOver
- 
-QTimeTravel → QTimeTravelQuery '?'?
-
-QStartOver → QStartOverQuery '?'?
-
-QTimeTravelQuery →
-    QTimeTravelKeyword QTimeTravelProgram QTimeTravelWhen?
-
-QStartOverQuery →
-    "byrja" "upp" "á" "nýtt"
-    | "byrja" "byrjun"
-
-QTimeTravelCourtesy → "getur" | "getur" "þú" | "geturðu" | "gætirðu"
-
-QTimeTravelKeyword →
-    "spila" | "spilar" | "spilaðu" | "spilað"  | "spilaði"
-
-QTimeTravelAtviksord →
-    "í" | "á" | "við" | "þau" | "þú"
-
-QTimeTravelProgram →
-    Nl
-
-QTimeTravelSince →
-    "síðan" 
-    | "frá" 
-    | "frá" "það" 
-    | "frá" "því"
-
-QTimeTravelWhen →
-    QTimeTravelToday | QTimeTravelYesterday | QTimeTravelDayBeforeYesterday
-# Prevents strings matching timing being matched as a part of the program
-# Programs containing "í dag", "í gær" or "í fyrradag" need be handled specifically
-$score(+72) QTimeTravelWhen  # This prevents it from being analyzed as part of the NP
-
-QTimeTravelToday →
-    "í" "dag"
-
-QTimeTravelYesterday →
-    "í_gær" | "geir" | "hér"
-
-QTimeTravelDayBeforeYesterday →
-  "í_fyrradag"
-
-"""
+_TIMETRAVEL_RE = rf"^{_CAN_YOU_RE}?{_PLAY_RE}(?P<program>.+?){_WHEN_RE}?$"
 
 
-def QTimeTravelQuery(node, params, result):
-    result.qtype = _TIMETRAVEL_QTYPE
+def handle_plain_text(q: Query) -> bool:
+    """Handles a plain text query."""
 
+    ql: str = q.query_lower
+    if any(re.search(r, ql) for r in _STARTOVER_RE):
+        q.set_qtype(_STARTOVER_QTYPE)
+        q.set_answer({"answer": "startover"}, "startover")
+        return True
+    m: Optional[Match[str]] = re.search(_TIMETRAVEL_RE, ql)
+    if m:
+        gd = m.groupdict()
+        program_raw: str = gd["program"]
+        when: Optional[str] = (
+            "daybeforeyesterday" if gd.get("daybeforeyesterday") else None
+        )
+        if not when:
+            when = "yesterday" if gd.get("yesterday") else None
+        if not when:
+            when = "today"
+        program_indef: str = NounPhrase(program_raw).indefinite or program_raw
 
-def QStartOverQuery(node, params, result):
-    result.qtype = _STARTOVER_QTYPE
-
-
-def QTimeTravelProgram(node, params, result):
-    nl = NounPhrase(result._nominative)
-    try:
-        result["program-angr"] = "{nl:ángr}".format(nl=nl)
-        result["program-nf"] = "{nl:nf}".format(nl=nl)
-    except:
-        result["program-angr"] = str(nl)
-        result["program-nf"] = ""
-
-    print("Nl:", nl)
-
-
-def QTimeTravelToday(node, params, result):
-    result["when"] = "today"
-
-
-def QTimeTravelYesterday(node, params, result):
-    result["when"] = "yesterday"
-
-
-def QTimeTravelDayBeforeYesterday(node, params, result):
-    result["when"] = "daybeforeyesterday"
-
-
-def sentence(state: QueryStateDict, result: Result) -> None:
-    """Called when sentence processing is complete."""
-    # if when not specified, default to today
-    """
-    try:
-        result["when"]
-    except:
-        result["when"] = "today"
-    """
-    if "when" not in result:
-        result["when"] = "today"
-
-    q: Query = state["query"]
-    if "qtype" in result and result["qtype"] == _TIMETRAVEL_QTYPE:
-        try:
-            print("))============>", _TIMETRAVEL_QTYPE, "<============((")
-            q.set_qtype(_TIMETRAVEL_QTYPE)
-            q.set_answer(
-                "", [result["when"], result["program-angr"], result["program-nf"]], ""
-            )
-            return
-        except Exception as e:
-            logging.warning(
-                "Exception generating answer from Timetravel: {0}".format(e)
-            )
-            q.set_error("E_EXCEPTION: {0}".format(e))
-    elif "qtype" in result and result["qtype"] == _STARTOVER_QTYPE:
-        try:
-            print("))============>", _STARTOVER_QTYPE, "<============((")
-            q.set_qtype(_STARTOVER_QTYPE)
-            q.set_answer("", "startover", "")
-            return
-        except Exception as e:
-            logging.warning("Exception generating answer from TVCP: {0}".format(e))
-            q.set_error("E_EXCEPTION: {0}".format(e))
-    else:
-        q.set_error("E_QUERY_NOT_UNDERSTOOD")
+        q.set_qtype(_TIMETRAVEL_QTYPE)
+        q.set_answer({"answer": "timetravel"}, [when, program_raw, program_indef])
+        return True
+    return False
