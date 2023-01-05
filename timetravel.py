@@ -1,10 +1,9 @@
-from typing import List, Dict, Optional, Match
-
+from typing import Optional, Match
 
 import re
 import random
 
-from query import Query
+from queries import Query
 from reynir import NounPhrase
 
 

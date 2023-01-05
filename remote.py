@@ -1,11 +1,7 @@
-from typing import List, Dict, Optional
-
 import logging
-import cachetools  # type: ignore
 import random
 
-from query import Query, QueryStateDict
-from queries import query_json_api
+from queries import Query, QueryStateDict
 from tree import Result
 
 from . import AnswerTuple, LatLonTuple
@@ -49,7 +45,7 @@ GRAMMAR = """
 
 Query →
     QRemote
- 
+
 QRemote → QRemoteQuery '?'?
 
 QRemoteQuery →

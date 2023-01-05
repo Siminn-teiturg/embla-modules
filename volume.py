@@ -1,15 +1,12 @@
-from typing import List, Dict, Optional, Mapping
+from typing import Mapping
 
 import logging
-import cachetools  # type: ignore
 import random
 import math
 import re
 
-from query import Query, QueryStateDict
-from queries import query_json_api
+from queries import Query, QueryStateDict
 from tree import Result
-from reynir import NounPhrase
 
 from . import AnswerTuple, LatLonTuple
 
