@@ -74,6 +74,11 @@ _PLAY_RE = r"( ?({}) ?)".format(
 
 _TIMETRAVEL_RE = rf"^{_CAN_YOU_RE}?{_PLAY_RE}(?P<program>.+?){_WHEN_RE}?$"
 
+# Manual fixes to program names (keyed by their indefinite form)
+_PROGRAM_NAME_FIXES = {
+    "sjöfréttir": ("Fréttir kl. 19:00", "Fréttir kl. 19:00"),
+}
+
 
 def handle_plain_text(q: Query) -> bool:
     """Handles a plain text query."""
@@ -95,6 +100,8 @@ def handle_plain_text(q: Query) -> bool:
         if not when:
             when = "today"
         program_indef: str = NounPhrase(program_raw).indefinite or program_raw
+        if program_indef.lower() in _PROGRAM_NAME_FIXES:
+            program_raw, program_indef = _PROGRAM_NAME_FIXES[program_indef.lower()]
 
         q.set_qtype(_TIMETRAVEL_QTYPE)
         q.set_answer({"answer": "timetravel"}, [when, program_raw, program_indef])
